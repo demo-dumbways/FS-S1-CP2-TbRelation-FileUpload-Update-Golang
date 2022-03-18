@@ -1,0 +1,8 @@
+version: '3.8'
+services:
+        ebook:
+             build: .
+             container_name: fs-s1-cp2-tb-realtion-file-upload
+             image: registry.mejik.xyz/ebook/fs-s1-cp2-tb-realtion-file-upload
+             ports:
+                     - 3028:3000
