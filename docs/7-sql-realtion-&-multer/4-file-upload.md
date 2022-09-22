@@ -6,66 +6,96 @@ sidebar_position: 4
 
 import useBaseUrl from '@docusaurus/useBaseUrl';
 
-Menggunakan multer yang telah dikonfigurasi, maka kita perlu mengimportnya kedalam file index.js
+Menggunakan `middleare uploadFile` yang telah dikonfigurasi, maka kita perlu menambahkan nya pada saat endpoint blog diakses untuk melakukan penambahan data blog
 
-```js
-const upload = require(path.join(__dirname, './middlewares/uploadFile'))
+```go {20} title="main.go"
+// .............
+// continuation this code same like before 
+// .............
+
+func main() {
+	route := mux.NewRouter()
+
+	connection.DatabaseConnect()
+
+	// static folder
+	route.PathPrefix("/public/").Handler(http.StripPrefix("/public/", http.FileServer(http.Dir("./public/"))))
+	route.PathPrefix("/uploads/").Handler(http.StripPrefix("/uploads/", http.FileServer(http.Dir("./uploads/"))))
+
+	// routing
+	route.HandleFunc("/", helloWorld).Methods("GET")
+	route.HandleFunc("/home", home).Methods("GET").Name("home")
+	route.HandleFunc("/blog", blogs).Methods("GET")
+	route.HandleFunc("/blog/{id}", blogDetail).Methods("GET")
+	route.HandleFunc("/add-blog", formBlog).Methods("GET")
+	route.HandleFunc("/blog", middleware.UploadFile(addBlog)).Methods("POST")
+	route.HandleFunc("/delete-blog/{id}", deleteBlog).Methods("GET")
+
+	route.HandleFunc("/contact-me", contactMe).Methods("GET")
+
+	route.HandleFunc("/register", formRegister).Methods("GET")
+	route.HandleFunc("/register", register).Methods("POST")
+
+	route.HandleFunc("/login", formLogin).Methods("GET")
+	route.HandleFunc("/login", login).Methods("POST")
+
+	route.HandleFunc("/logout", logout).Methods("GET")
+
+	fmt.Println("Server running on port 5000")
+	http.ListenAndServe("localhost:5000", route)
+}
+
+// .............
+// continuation this code same like before 
+// .............
 ```
 
-selanjutnya kita akan merefactor route `/blog` dengan method `post` agar bisa menangani file upload menggunakan multer. Kita menambahkan penggunaan middleware upload serta mengambil nama file yang diupload untuk disimpan kedalam database.
+selanjutnya kita akan merefactor function `addBlog` agar mengambil data filename yang berasal dari file upload untuk disimpan kedalam database, selain itu kita juga akan mengambil data `id user` yang sedang login untuk disimpan kedalam database sebagai data `author_id`.
 
-<a class="btn-example-code" href="https://github.com/demo-dumbways/ebook-code-result-chapter-2/blob/day7-3.file-upload/api/index.js">
+<a class="btn-example-code" href="">
 Contoh code
 </a>
 
 <br />
 <br />
 
-```js {7,16,18-19} title=index.js
-// this code below endpoint app.get('/blog/:id', function (req, res)
-app.get('/add-blog', function (req, res) {
-    setHeader(res)
-    res.render("form-blog")
-})
+```go {14-24} title="main.go"
+// .............
+// continuation this code same like before 
+// .............
 
-app.post('/blog', upload.single('image'), function (req, res) {
-    let data = req.body
+func addBlog(w http.ResponseWriter, r *http.Request) {
+	err := r.ParseForm()
+	if err != nil {
+		log.Fatal(err)
+	}
 
-    if (!req.session.isLogin) {
-        req.flash('danger', 'Please login')
-        return res.redirect('/add-blog')
-    }
+	title := r.PostForm.Get("title")
+	content := r.PostForm.Get("content")
 
-    let authorId = req.session.user.id
-    let image = req.file ? req.file.filename : null
+	dataContex := r.Context().Value("dataFile")
+	image := dataContex.(string)
 
-    let query = `INSERT INTO blog(title, content, image, author_id) VALUES 
-                ('${data.title}', '${data.content}', '${image}', '${authorId}')`
+	var store = sessions.NewCookieStore([]byte("SESSION_ID"))
+	session, _ := store.Get(r, "SESSION_ID")
 
-    db.connect(function (err, client, done) {
-        if (err) throw err
+	author := session.Values["Id"].(int)
 
-        client.query(query, function (err, result) {
-            if (err) throw err
-            res.redirect('/blog')
-        })
-    })
-})
+	_, err = connection.Conn.Exec(context.Background(), 
+            "INSERT INTO blog(title, content,image,author_id) 
+                VALUES ($1,$2,$3,$4)", title, content, image, author)
+	if err != nil {
+		w.WriteHeader(http.StatusInternalServerError)
+		w.Write([]byte("message : " + err.Error()))
+		return
+	}
 
-app.get('/delete-blog/:id', function (req, res) {
-    let id = req.params.id
-    let query = `DELETE FROM blog WHERE id = ${id}`
+	http.Redirect(w, r, "/blog", http.StatusMovedPermanently)
+}
 
-    setHeader(res)
-    db.connect(function (err, client, done) {
-        done()
-        if (err) throw err
-        client.query(query, function (err, result) {
-            if (err) throw err
-            res.redirect('/blog')
-        })
-    })
-})
+// .............
+// continuation this code same like before 
+// .............
 ```
 
 <img alt="image1" src={useBaseUrl('img/docs/image-7-3.png')} height="600px"/>
@@ -74,7 +104,7 @@ app.get('/delete-blog/:id', function (req, res) {
 <br />
 
 <div>
-<a class="btn-demo" href="https://personal-web-chapter-2.herokuapp.com/add-blog">
+<a class="btn-demo" href="">
 Demo
 </a>
 </div>

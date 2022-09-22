@@ -2,255 +2,432 @@
 sidebar_position: 5
 ---
 
-# 5. Full Code Index.JS
+# 5. Full Code main.go
 
-Berikut adalah Full Code pada file `index.js` :
+Berikut adalah Full Code pada file `main.go` :
 
-<a class="btn-example-code" href="https://github.com/demo-dumbways/ebook-code-result-chapter-2/blob/day7-4.full-code/api/index.js">
+<a class="btn-example-code" href="">
 Contoh code
 </a>
 
 <br />
 <br />
 
-```js title="index.js"
-const express = require('express')
-const path = require("path");
-const bcrypt = require('bcrypt');
-const flash = require('express-flash')
-const session = require('express-session')
+```go title="main.go"
+package main
 
-const db = require(path.join(__dirname, '../connection/db'));
+import (
+	"context"
+	"fmt"
+	"golang-c2/connection"
+	"golang-c2/middleware"
+	"html/template"
+	"log"
+	"net/http"
+	"strconv"
+	"strings"
+	"time"
 
-const app = express()
+	"golang.org/x/crypto/bcrypt"
 
-app.use(flash())
-
-app.use(
-    session({
-        cookie: {
-            maxAge: 2 * 60 * 60 * 1000,
-            secure: false,
-            httpOnly: true,
-        },
-        store: new session.MemoryStore(),
-        saveUninitialized: true,
-        resave: false,
-        secret: "secretValue",
-    })
+	"github.com/gorilla/mux"
+	"github.com/gorilla/sessions"
 )
 
-app.set('view engine', 'hbs');
-app.set("views", path.join(__dirname, "../views"));
+type MetaData struct {
+	Title     string
+	IsLogin   bool
+	UserName  string
+	FlashData string
+}
 
-app.use("/public", express.static(path.join(__dirname, "../public")));
+var Data = MetaData{
+	Title: "Personal Web",
+}
 
-app.use(express.urlencoded({ extended: false }))
+type Blog struct {
+	Id          int
+	Title       string
+	Image       string
+	Post_date   time.Time
+	Format_date string
+	Author      string
+	Content     string
+	IsLogin     bool
+}
 
-app.get('/', function (req, res) {
-    res.send("Hello World")
-})
+type User struct {
+	Id       int
+	Name     string
+	Email    string
+	Password string
+}
 
-app.get('/home', function (req, res) {
-    setHeader(res)
-    res.render('index', { isLogin: req.session.isLogin, user: req.session.user })
-})
+func main() {
+	route := mux.NewRouter()
 
-app.get('/blog', function (req, res) {
-    setHeader(res)
+	connection.DatabaseConnect()
 
-    db.connect((err, client, done) => {
-        if (err) throw err
+	// static folder
+	route.PathPrefix("/public/").Handler(http.StripPrefix("/public/", http.FileServer(http.Dir("./public/"))))
+	route.PathPrefix("/uploads/").Handler(http.StripPrefix("/uploads/", http.FileServer(http.Dir("./uploads/"))))
 
-        client.query('SELECT * FROM tb_blog', (err, result) => {
-            done()
-            if (err) throw
+	// routing
+	route.HandleFunc("/", helloWorld).Methods("GET")
+	route.HandleFunc("/home", home).Methods("GET").Name("home")
+	route.HandleFunc("/blog", blogs).Methods("GET")
+	route.HandleFunc("/blog/{id}", blogDetail).Methods("GET")
+	route.HandleFunc("/add-blog", formBlog).Methods("GET")
+	route.HandleFunc("/blog", middleware.UploadFile(addBlog)).Methods("POST")
+	route.HandleFunc("/delete-blog/{id}", deleteBlog).Methods("GET")
 
-            let data = result.rows
+	route.HandleFunc("/contact-me", contactMe).Methods("GET")
 
-            data = data.map((blog) => {
-                return {
-                    ...blog,
-                    post_at: getFullTime(blog.post_at),
-                    post_age: getDistanceTime(blog.post_at),
-                    isLogin: req.session.isLogin,
-                }
-            })
+	route.HandleFunc("/register", formRegister).Methods("GET")
+	route.HandleFunc("/register", register).Methods("POST")
 
-            res.render(
-                'blog',
-                {
-                    isLogin: req.session.isLogin,
-                    blogs: data,
-                    user: req.session.user
-                })
-        })
-    })
-})
+	route.HandleFunc("/login", formLogin).Methods("GET")
+	route.HandleFunc("/login", login).Methods("POST")
 
-app.get('/blog/:id', function (req, res) {
-    const blogId = req.params.id
+	route.HandleFunc("/logout", logout).Methods("GET")
 
-    setHeader(res)
-    db.connect((err, client, done) => {
-        if (err) throw err
+	fmt.Println("Server running on port 5000")
+	http.ListenAndServe("localhost:5000", route)
+}
 
-        client.query(`SELECT * FROM blog WHERE id = ${id}`, function (err, result) {
-            done()
-            if (err) throw err
+func helloWorld(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusOK)
+	w.Write([]byte("Hello World!"))
+}
 
-            res.render('blog-detail', { isLogin: req.session.isLogin, blog: result.rows[0] })
-        })
-    })
-})
+func home(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 
-app.get('/add-blog', function (req, res) {
-    setHeader(res)
-    res.render("form-blog")
-})
+	var tmpl, err = template.ParseFiles("views/index.html")
+	if err != nil {
+		w.WriteHeader(http.StatusInternalServerError)
+		w.Write([]byte("message : " + err.Error()))
+		return
+	}
 
-app.post('/blog', function (req, res) {
-    let data = req.body
+	var store = sessions.NewCookieStore([]byte("SESSION_ID"))
+	session, _ := store.Get(r, "SESSION_ID")
 
-    if (!req.session.isLogin) {
-        req.flash('danger', 'Please login')
-        return res.redirect('/add-blog')
-    }
+	if session.Values["IsLogin"] != true {
+		Data.IsLogin = false
+	} else {
+		Data.IsLogin = session.Values["IsLogin"].(bool)
+		Data.UserName = session.Values["Name"].(string)
+	}
 
-    let query = `INSERT INTO blog(title, content, image) VALUES ('${data.title}', '${data.content}', 'image.png')`
+	fm := session.Flashes("message")
 
-    db.connect(function (err, client, done) {
-        if (err) throw err
+	var flashes []string
+	if len(fm) > 0 {
+		session.Save(r, w)
+		// Initiate a strings slice to return messages.
+		for _, fl := range fm {
+			// Add message to the slice.
+			flashes = append(flashes, fl.(string))
+		}
+	}
 
-        client.query(query, function (err, result) {
-            if (err) throw err
-            res.redirect('/blog')
-        })
-    })
-})
+	Data.FlashData = strings.Join(flashes, "")
 
-app.get('/delete-blog/:id', function (req, res) {
-    let id = req.params.id
-    let query = `DELETE FROM blog WHERE id = ${id}`
+	w.WriteHeader(http.StatusOK)
+	tmpl.Execute(w, Data)
+}
 
-    setHeader(res)
-    db.connect(function (err, client, done) {
-        done()
-        if (err) throw err
-        client.query(query, function (err, result) {
-            if (err) throw err
-            res.redirect('/blog')
-        })
-    })
-})
+func blogs(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 
-app.get('/update-blog/:id', function (req, res) {
-    let id = req.params.id
-    let query = `UPDATE FROM blog WHERE id = ${id}`
+	var tmpl, err = template.ParseFiles("views/blog.html")
+	if err != nil {
+		w.WriteHeader(http.StatusInternalServerError)
+		w.Write([]byte("message : " + err.Error()))
+		return
+	}
 
-    setHeader(res)
-    db.connect(function (err, client, done) {
-        done()
-        if (err) throw err
-        client.query(query, function (err, result) {
-            if (err) throw err
-            res.render('update-blog', { isLogin: req.session.isLogin, blog: result.rows[0] })
-        })
-    })
-})
+	var store = sessions.NewCookieStore([]byte("SESSION_ID"))
+	session, _ := store.Get(r, "SESSION_ID")
 
-app.post('/update-blog/:id', function (req, res) {
-    let id = req.params.id
-    let data = req.body
+	if session.Values["IsLogin"] != true {
+		Data.IsLogin = false
+	} else {
+		Data.IsLogin = session.Values["IsLogin"].(bool)
+		Data.UserName = session.Values["Name"].(string)
+	}
 
-    let query = `UPDATE blog SET title='${data.title}', content='${data.content}' WHERE id='${id}'`
+	rows, _ := connection.Conn.Query(context.Background(), "SELECT blog.id, title, image, content, post_at, users.name as author FROM blog LEFT JOIN users ON blog.author_id = users.id  ORDER BY id DESC")
 
-    db.connect(function (err, client, done) {
-        if (err) throw err
+	var result []Blog
+	for rows.Next() {
+		var each = Blog{}
 
-        client.query(query, function (err, result) {
-            done()
-            if (err) throw err
-            res.redirect('/blog')
-        })
-    })
-})
+		var err = rows.Scan(&each.Id, &each.Title, &each.Image, &each.Content, &each.Post_date, &each.Author)
+		if err != nil {
+			fmt.Println(err.Error())
+			return
+		}
 
-app.get('/contact-me', function (req, res) {
-    setHeader(res)
-    res.render('contact')
-})
+		each.Format_date = each.Post_date.Format("2 January 2006")
 
-app.get('/register', function (req, res) {
-    setHeader(res)
-    res.render('register')
-})
+		if session.Values["IsLogin"] != true {
+			each.IsLogin = false
+		} else {
+			each.IsLogin = session.Values["IsLogin"].(bool)
+		}
 
-app.post('/register', function (req, res) {
-    const { email, name, password } = req.body
+		result = append(result, each)
+	}
 
-    const hashedPassword = bcrypt.hashSync(password, 10)
+	fmt.Println(result)
+	respData := map[string]interface{}{
+		"Data":  Data,
+		"Blogs": result,
+	}
 
-    let query = `INSERT INTO tb_user(name, email, password) VALUES('${name}', '${email}', '${hashedPassword}')`
+	w.WriteHeader(http.StatusOK)
+	tmpl.Execute(w, respData)
+}
 
-    db.connect(function (err, client, done) {
-        if (err) throw err
+func blogDetail(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 
-        client.query(query, function (err, result) {
-            if (err) throw err
-            res.redirect('/login')
-        })
-    })
-})
+	id, _ := strconv.Atoi(mux.Vars(r)["id"])
 
-app.get('/login', function (req, res) {
-    setHeader(res)
-    res.render('login')
-})
+	var tmpl, err = template.ParseFiles("views/blog-detail.html")
+	if err != nil {
+		w.WriteHeader(http.StatusInternalServerError)
+		w.Write([]byte("message : " + err.Error()))
+		return
+	}
 
-app.post('/login', function (req, res) {
-    const { email, password } = req.body
+	BlogDetail := Blog{}
+	err = connection.Conn.QueryRow(context.Background(), "SELECT id, title, image, content, post_at FROM blog WHERE id=$1", id).Scan(
+		&BlogDetail.Id, &BlogDetail.Title, &BlogDetail.Image, &BlogDetail.Content, &BlogDetail.Post_date)
+	if err != nil {
+		w.WriteHeader(http.StatusInternalServerError)
+		w.Write([]byte("message : " + err.Error()))
+		return
+	}
 
-    let query = `SELECT * FROM tb_user WHERE email = '${email}'`
+	BlogDetail.Author = "Ilham Fathullah"
+	BlogDetail.Format_date = BlogDetail.Post_date.Format("2 January 2006")
 
-    db.connect(function (err, client, done) {
-        if (err) throw err
+	resp := map[string]interface{}{
+		"Data": Data,
+		"Blog": BlogDetail,
+	}
 
-        client.query(query, function (err, result) {
-            if (err) throw err
+	w.WriteHeader(http.StatusOK)
+	tmpl.Execute(w, resp)
+}
 
-            if (result.rows.length == 0) {
-                req.flash('danger', "Email & Password don't match!")
-                return res.redirect('/login')
-            }
+func formBlog(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 
-            let isMatch = bcrypt.compareSync(password, result.rows[0].password)
+	var tmpl, err = template.ParseFiles("views/form-blog.html")
+	if err != nil {
+		w.WriteHeader(http.StatusInternalServerError)
+		w.Write([]byte("message : " + err.Error()))
+		return
+	}
 
-            if (isMatch) {
-                req.session.isLogin = true
-                req.session.user = {
-                    id: result.rows[0].id,
-                    name: result.rows[0].name,
-                    email: result.rows[0].email
-                }
+	w.WriteHeader(http.StatusOK)
+	tmpl.Execute(w, Data)
+}
 
-                req.flash('success', "Login success")
-                res.redirect('/blog')
-            } else {
-                req.flash('danger', "Email & Password don't match!")
-                res.redirect('/login')
-            }
-        })
-    })
-})
+func addBlog(w http.ResponseWriter, r *http.Request) {
+	err := r.ParseForm()
+	if err != nil {
+		log.Fatal(err)
+	}
 
-const port = 5000
-app.listen(port, function () {
-    console.debug(`Server running on port ${port}`)
-})
+	title := r.PostForm.Get("title")
+	content := r.PostForm.Get("content")
 
-function setHeader(res) {
-    res.setHeader("Content-Type", "text/html");
-    res.setHeader("Cache-Control", "s-max-age=1, stale-while-revalidate");
+	dataContex := r.Context().Value("dataFile")
+	image := dataContex.(string)
+
+	var store = sessions.NewCookieStore([]byte("SESSION_ID"))
+	session, _ := store.Get(r, "SESSION_ID")
+
+	author := session.Values["Id"].(int)
+	fmt.Println(author)
+
+	_, err = connection.Conn.Exec(context.Background(), "INSERT INTO blog(title, content,image,author_id) VALUES ($1,$2,$3,$4)", title, content, image, author)
+	if err != nil {
+		w.WriteHeader(http.StatusInternalServerError)
+		w.Write([]byte("message : " + err.Error()))
+		return
+	}
+
+	http.Redirect(w, r, "/blog", http.StatusMovedPermanently)
+}
+
+func deleteBlog(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+
+	id, _ := strconv.Atoi(mux.Vars(r)["id"])
+
+	_, err := connection.Conn.Exec(context.Background(), "DELETE FROM blog WHERE id=$1", id)
+	if err != nil {
+		w.WriteHeader(http.StatusInternalServerError)
+		w.Write([]byte("message : " + err.Error()))
+		return
+	}
+
+	http.Redirect(w, r, "/blog", http.StatusMovedPermanently)
+}
+
+func contactMe(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+
+	var tmpl, err = template.ParseFiles("views/contact.html")
+	if err != nil {
+		w.WriteHeader(http.StatusInternalServerError)
+		w.Write([]byte("message : " + err.Error()))
+		return
+	}
+
+	var store = sessions.NewCookieStore([]byte("SESSION_ID"))
+	session, _ := store.Get(r, "SESSION_ID")
+
+	if session.Values["IsLogin"] != true {
+		Data.IsLogin = false
+	} else {
+		Data.IsLogin = session.Values["IsLogin"].(bool)
+		Data.UserName = session.Values["Name"].(string)
+	}
+
+	w.WriteHeader(http.StatusOK)
+	tmpl.Execute(w, Data)
+}
+
+func formRegister(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+
+	var tmpl, err = template.ParseFiles("views/register.html")
+	if err != nil {
+		w.WriteHeader(http.StatusInternalServerError)
+		w.Write([]byte("message : " + err.Error()))
+		return
+	}
+
+	w.WriteHeader(http.StatusOK)
+	tmpl.Execute(w, Data)
+}
+
+func register(w http.ResponseWriter, r *http.Request) {
+	err := r.ParseForm()
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	name := r.PostForm.Get("name")
+	email := r.PostForm.Get("email")
+
+	password := r.PostForm.Get("password")
+	passwordHash, _ := bcrypt.GenerateFromPassword([]byte(password), 10)
+
+	_, err = connection.Conn.Exec(context.Background(), "INSERT INTO users(name, email,password) VALUES ($1,$2,$3)", name, email, passwordHash)
+	if err != nil {
+		w.WriteHeader(http.StatusInternalServerError)
+		w.Write([]byte("message : " + err.Error()))
+		return
+	}
+
+	var store = sessions.NewCookieStore([]byte("SESSION_ID"))
+	session, _ := store.Get(r, "SESSION_ID")
+
+	session.AddFlash("succesfull register", "message")
+
+	session.Save(r, w)
+
+	http.Redirect(w, r, "/login", http.StatusMovedPermanently)
+}
+
+func formLogin(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+
+	var tmpl, err = template.ParseFiles("views/login.html")
+	if err != nil {
+		w.WriteHeader(http.StatusInternalServerError)
+		w.Write([]byte("message : " + err.Error()))
+		return
+	}
+
+	var store = sessions.NewCookieStore([]byte("SESSION_ID"))
+	session, _ := store.Get(r, "SESSION_ID")
+
+	fm := session.Flashes("message")
+
+	var flashes []string
+	if len(fm) > 0 {
+		session.Save(r, w)
+		// Initiate a strings slice to return messages.
+		for _, fl := range fm {
+			// Add message to the slice.
+			flashes = append(flashes, fl.(string))
+		}
+	}
+
+	Data.FlashData = strings.Join(flashes, "")
+
+	w.WriteHeader(http.StatusOK)
+	tmpl.Execute(w, Data)
+}
+
+func login(w http.ResponseWriter, r *http.Request) {
+	var store = sessions.NewCookieStore([]byte("SESSION_ID"))
+	session, _ := store.Get(r, "SESSION_ID")
+
+	err := r.ParseForm()
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	email := r.PostForm.Get("email")
+	password := r.PostForm.Get("password")
+
+	user := User{}
+
+	err = connection.Conn.QueryRow(context.Background(), "SELECT * FROM users WHERE email=$1", email).Scan(
+		&user.Id, &user.Name, &user.Email, &user.Password,
+	)
+	if err != nil {
+		w.WriteHeader(http.StatusBadRequest)
+		w.Write([]byte("message : " + err.Error()))
+		return
+	}
+
+	err = bcrypt.CompareHashAndPassword([]byte(user.Password), []byte(password))
+	if err != nil {
+		w.WriteHeader(http.StatusBadRequest)
+		w.Write([]byte("message : " + err.Error()))
+		return
+	}
+
+	session.Values["IsLogin"] = true
+	session.Values["Name"] = user.Name
+	session.Values["Id"] = user.Id
+	session.Options.MaxAge = 10800 // 3 hours
+
+	session.AddFlash("succesfull login", "message")
+	session.Save(r, w)
+
+	http.Redirect(w, r, "/home", http.StatusMovedPermanently)
+}
+
+func logout(w http.ResponseWriter, r *http.Request) {
+	fmt.Println("logout")
+	var store = sessions.NewCookieStore([]byte("SESSION_ID"))
+	session, _ := store.Get(r, "SESSION_ID")
+	session.Options.MaxAge = -1
+	session.Save(r, w)
+
+	http.Redirect(w, r, "/home", http.StatusSeeOther)
 }
 ```

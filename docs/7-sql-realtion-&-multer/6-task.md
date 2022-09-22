@@ -12,10 +12,10 @@ import useBaseUrl from '@docusaurus/useBaseUrl';
 Setelah mempelajari terkait relation dan multer, maka silahkan kalian membuat
 relasikan antara tabel tb_users ke tb_projects agar saat user tersebut login
 maka pada page home akan menampilkan project yang user tersebut buat ,serta
-implementasikan multer pada Task. Berikut list task dalam Relation & Multer:
+implementasikan multer pada Task. Berikut list task dalam Relation & File Upload:
 
 - [ ] Realsikan antara Table tb_users dan tb_projects
-- [ ] Implementasikan Multer
+- [ ] Implementasikan File Upload
 ```
 
 <img alt="image1-7" src={useBaseUrl('img/docs/image-git-day7.png')} height="500px"/>

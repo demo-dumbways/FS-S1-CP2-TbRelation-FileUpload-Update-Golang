@@ -14,70 +14,79 @@ pada gambar diatas menunjukkan relasi yang menghubungkan tabel user dengan tabel
 
 Menampilkan nama user yang memposting blog maka kita perlu melakukan query multi table dengan memanfaatkan table ralation. Kita akan melakukan sedikit refactor pada query pada saat melakukan rendering tampilan blog di route `/blog`
 
-<a class="btn-example-code" href="https://github.com/demo-dumbways/ebook-code-result-chapter-2/blob/day7-1.table-relation/api/index.js">
+<a class="btn-example-code" href="">
 Contoh code
 </a>
 
 <br />
 <br />
 
-```js {9-11} title=index.js
-app.get('/home', function (req, res) {
-    setHeader(res)
-    res.render('index', { isLogin: req.session.isLogin, user: req.session.user })
-})
+```go {25-30} title=main.go
+// .............
+// continuation this code same like before 
+// .............
 
-app.get('/blog', function (req, res) {
-    setHeader(res)
+func blogs(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 
-    let query = `SELECT blog.id, blog.title, blog.content, blog.image, tb_user.name AS author, blog.author_id, blog.post_at
-                    FROM blog LEFT JOIN tb_user
-                    ON blog.author_id = tb_user.id`
+	var tmpl, err = template.ParseFiles("views/blog.html")
+	if err != nil {
+		w.WriteHeader(http.StatusInternalServerError)
+		w.Write([]byte("message : " + err.Error()))
+		return
+	}
 
-    db.connect((err, client, done) => {
-        if (err) throw err
+	var store = sessions.NewCookieStore([]byte("SESSION_ID"))
+	session, _ := store.Get(r, "SESSION_ID")
 
-        client.query(query, (err, result) => {
-            done()
-            if (err) throw
+	if session.Values["IsLogin"] != true {
+		Data.IsLogin = false
+	} else {
+		Data.IsLogin = session.Values["IsLogin"].(bool)
+		Data.UserName = session.Values["Name"].(string)
+	}
 
-            let data = result.rows
+	rows, _ := connection.Conn.Query(context.Background(), 
+                "SELECT blog.id, title, image, content, post_at, users.name as author 
+                    FROM blog 
+                    LEFT JOIN users 
+                    ON blog.author_id = users.id  
+                    ORDER BY id DESC")
 
-            data = data.map((blog) => {
-                return {
-                    ...blog,
-                    post_at: getFullTime(blog.post_at),
-                    post_age: getDistanceTime(blog.post_at),
-                    isLogin: req.session.isLogin
-                }
-            })
+	var result []Blog
+	for rows.Next() {
+		var each = Blog{}
 
-            res.render(
-                'blog',
-                {
-                    isLogin: req.session.isLogin,
-                    user: req.session.user,
-                    blogs: data
-                })
-        })
-    })
-})
+		var err = rows.Scan(&each.Id, &each.Title, &each.Image, &each.Content, &each.Post_date, &each.Author)
+		if err != nil {
+			fmt.Println(err.Error())
+			return
+		}
 
-app.get('/blog/:id', function (req, res) {
-    const blogId = req.params.id
+		each.Format_date = each.Post_date.Format("2 January 2006")
 
-    setHeader(res)
-    db.connect((err, client, done) => {
-        if (err) throw err
+		if session.Values["IsLogin"] != true {
+			each.IsLogin = false
+		} else {
+			each.IsLogin = session.Values["IsLogin"].(bool)
+		}
 
-        client.query(`SELECT * FROM blog WHERE id = ${id}`, function (err, result) {
-            done()
-            if (err) throw err
+		result = append(result, each)
+	}
 
-            res.render('blog-detail', { isLogin: req.session.isLogin, blog: result.rows[0] })
-        })
-    })
-})
+	fmt.Println(result)
+	respData := map[string]interface{}{
+		"Data":  Data,
+		"Blogs": result,
+	}
+
+	w.WriteHeader(http.StatusOK)
+	tmpl.Execute(w, respData)
+}
+
+// .............
+// continuation this code same like before 
+// .............
 ```
 
 
