@@ -70,7 +70,7 @@ Kita akan melakukan konfigurasi tempat penyimpanan file yang diupload, kita akan
 
 Selain itu, kita jga akan melakukan konfigurasi terkait nama file, kita akan mengubah nama file yang diupload menjadi gabungan dari tanggal saat file di upload dan nama asli filenya.
 
-<a class="btn-example-code" href="">
+<a class="btn-example-code" href="https://github.com/demo-dumbways/ebook-code-result-chapter-2-golang/blob/day7-2-configuration-middleware-upload/pkg/middleware/uploadFile.go">
 Contoh code
 </a>
 

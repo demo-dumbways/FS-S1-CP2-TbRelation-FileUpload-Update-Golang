@@ -6,7 +6,7 @@ sidebar_position: 2
 
 import useBaseUrl from '@docusaurus/useBaseUrl';
 
-**Table relation** adalah sebuah konsep database dimana sebuah database terdiri dari beberapa tabel yang saling terkait. Pada case kali ini kita menghubungkan antar tabel user dengan tabel blog. 
+**Table relation** adalah sebuah konsep database dimana sebuah database terdiri dari beberapa tabel yang saling terkait. Pada case kali ini kita menghubungkan antar tabel user dengan tabel blog.
 
 <img alt="image1" src={useBaseUrl('img/docs/image-7-1.png')} height="300px"/>
 
@@ -14,16 +14,16 @@ pada gambar diatas menunjukkan relasi yang menghubungkan tabel user dengan tabel
 
 Menampilkan nama user yang memposting blog maka kita perlu melakukan query multi table dengan memanfaatkan table ralation. Kita akan melakukan sedikit refactor pada query pada saat melakukan rendering tampilan blog di route `/blog`
 
-<a class="btn-example-code" href="">
+<a class="btn-example-code" href="https://github.com/demo-dumbways/ebook-code-result-chapter-2-golang/blob/day7-1-table-relation/main.go">
 Contoh code
 </a>
 
 <br />
 <br />
 
-```go {25-30} title=main.go
+```go {25} title=main.go
 // .............
-// continuation this code same like before 
+// continuation this code same like before
 // .............
 
 func blogs(w http.ResponseWriter, r *http.Request) {
@@ -46,12 +46,7 @@ func blogs(w http.ResponseWriter, r *http.Request) {
 		Data.UserName = session.Values["Name"].(string)
 	}
 
-	rows, _ := connection.Conn.Query(context.Background(), 
-                "SELECT blog.id, title, image, content, post_at, users.name as author 
-                    FROM blog 
-                    LEFT JOIN users 
-                    ON blog.author_id = users.id  
-                    ORDER BY id DESC")
+   	rows, _ := connection.Conn.Query(context.Background(), "SELECT tb_blog.id, title, image, content, post_date, tb_user.name as author FROM tb_blog LEFT JOIN tb_user ON tb_blog.author_id = tb_user.id  ORDER BY id DESC")
 
 	var result []Blog
 	for rows.Next() {
@@ -85,10 +80,9 @@ func blogs(w http.ResponseWriter, r *http.Request) {
 }
 
 // .............
-// continuation this code same like before 
+// continuation this code same like before
 // .............
 ```
-
 
 <img alt="image1" src={useBaseUrl('img/docs/image-7-2.png')} height="600px"/>
 
